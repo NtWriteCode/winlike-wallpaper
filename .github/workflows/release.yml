@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build ${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - target: linux
+            os: ubuntu-latest
+            build_args: linux --release
+            out_dir: build/linux/x64/release/bundle
+            asset_name: Winlike-Wallpaper-Linux.zip
+          - target: windows
+            os: windows-latest
+            build_args: windows --release
+            out_dir: build\windows\x64\runner\Release
+            asset_name: Winlike-Wallpaper-Windows.zip
+          - target: android
+            os: ubuntu-latest
+            build_args: apk --release --target-platform android-arm64
+            out_path: build/app/outputs/flutter-apk/app-release.apk
+            asset_name: Winlike-Wallpaper-Android-arm64.apk
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          
+      - name: Install Linux dependencies
+        if: matrix.target == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libgtk-3-dev pkg-config
+        
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: flutter build ${{ matrix.build_args }}
+        
+      - name: Zip (Linux)
+        if: matrix.target == 'linux'
+        run: cd ${{ matrix.out_dir }} && zip -r ../../../../../${{ matrix.asset_name }} .
+        
+      - name: Zip (Windows)
+        if: matrix.target == 'windows'
+        run: Compress-Archive -Path ${{ matrix.out_dir }}\* -DestinationPath ${{ matrix.asset_name }}
+        
+      - name: Copy APK (Android)
+        if: matrix.target == 'android'
+        run: cp ${{ matrix.out_path }} ${{ matrix.asset_name }}
+        
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}
