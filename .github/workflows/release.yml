@@ -19,16 +19,19 @@ jobs:
             build_args: linux --release
             out_dir: build/linux/x64/release/bundle
             asset_name: Winlike-Wallpaper-Linux.zip
+            appimage_name: Winlike-Wallpaper-Linux.AppImage
           - target: windows
             os: windows-latest
             build_args: windows --release
             out_dir: build\windows\x64\runner\Release
             asset_name: Winlike-Wallpaper-Windows.zip
+            appimage_name: ""
           - target: android
             os: ubuntu-latest
             build_args: apk --release --target-platform android-arm64
             out_path: build/app/outputs/flutter-apk/app-release.apk
             asset_name: Winlike-Wallpaper-Android-arm64.apk
+            appimage_name: ""
 
     runs-on: ${{ matrix.os }}
     
@@ -63,7 +66,41 @@ jobs:
         if: matrix.target == 'android'
         run: cp ${{ matrix.out_path }} ${{ matrix.asset_name }}
         
+      - name: Create AppImage (Linux)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get install -y libfuse2
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          
+          mkdir -p AppDir
+          cp -r ${{ matrix.out_dir }}/* AppDir/
+          
+          cat <<EOF > AppDir/winlike_wallpaper.desktop
+          [Desktop Entry]
+          Name=Winlike Wallpaper
+          Exec=winlike_wallpaper
+          Icon=winlike_wallpaper
+          Type=Application
+          Categories=Utility;
+          EOF
+          
+          cp assets/icon.png AppDir/winlike_wallpaper.png
+          
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+          find . -maxdepth 1 -name "*.AppImage" -not -name "linuxdeploy-x86_64.AppImage" -exec mv {} ${{ matrix.appimage_name }} \;
+
+      - name: Prepare Release Assets
+        shell: bash
+        run: |
+          mkdir -p release_assets
+          cp ${{ matrix.asset_name }} release_assets/
+          if [ "${{ matrix.appimage_name }}" != "" ]; then cp ${{ matrix.appimage_name }} release_assets/; fi
+        
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.asset_name }}
+          files: release_assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
